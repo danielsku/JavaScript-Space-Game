@@ -1,6 +1,24 @@
 <html>
+  <head>
+    <style>
+      body {
+        display: flex;
+        justify-content: center; /* horizontally center */
+        align-items: center;     /* vertically center */
+        height: 100vh;           /* full viewport height */
+        margin: 0;
+        background: #f0f0f0;
+      }
+
+      canvas {
+        /* optional: add a border to see it */
+        border: 1px solid black;
+      }
+    </style>
+  </head>
   <body>
-    <canvas id ="canvas" width="1024" height="384"></canvas>
+    <!-- Multiply the original width/height by 1.5 -->
+    <canvas id="canvas" width="1536" height="576"></canvas>
     <script src="app.js"></script>
   </body>
 </html>
