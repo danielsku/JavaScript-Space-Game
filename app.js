@@ -11,15 +11,42 @@ class GameObject {
     draw(ctx) {
         ctx.drawImage(this.img, this.x, this.y, this.width, this.height)
     }
+
+    rectFromGameObject() {
+        return {
+            top: this.y,
+            left: this.x,
+            bottom: this.y + this.height,
+            right: this.x + this.width,
+        };
+    }
 }
 
 class Hero extends GameObject {
     constructor(x, y) {
         super(x, y)
-        this.width = 45
-        this.height = 45
+        this.width = 99
+        this.height = 75
         this.type = "Hero"
         this.speed = 5
+        this.cooldown = 0
+    }
+
+    fire() {
+        gameObjects.push(new Laser(this.x + 45, this.y - 10));
+        this.cooldown = 500;
+
+        let id = setInterval(() => {
+            if (this.cooldown > 0) {
+                this.cooldown -= 100;
+            } else {
+                clearInterval(id);
+            }
+        }, 200);
+    }
+
+    canFire() {
+        return this.cooldown === 0;
     }
 }
 
@@ -40,6 +67,34 @@ class Enemy extends GameObject {
     }
 }
 
+class Laser extends GameObject {
+    constructor(x, y) {
+        super(x, y);
+        this.width = 9;
+        this.height = 33;
+        this.type = 'Laser';
+        this.img = laserImg;
+
+        let id = setInterval(() => {
+            if (this.y > 0) {
+                this.y -= 15;
+            } else {
+                this.dead = true;
+                clearInterval(id);
+            }
+        }, 100);
+    }
+}
+
+function intersectRect(r1, r2) {
+    return !(
+        r2.left > r1.right ||
+        r2.right < r1.left ||
+        r2.top > r1.bottom ||
+        r2.bottom < r1.top
+    );
+}
+
 const onKeyDown = function (e) {
     console.log(e.keyCode);
     switch (e.keyCode) {
@@ -57,15 +112,34 @@ const onKeyDown = function (e) {
 
 window.addEventListener("keydown", onKeyDown);
 window.addEventListener("keyup", (evt) => {
-    if(evt.key == "ArrowUp") {
-        eventEmitter.emit(Messages.KEY_EVENT_UP)
-    } else if (evt.key == "ArrowDown") {
-        eventEmitter.emit(Messages.KEY_EVENT_DOWN)
-    } else if (evt.key == "ArrowLeft") {
-        eventEmitter.emit(Messages.KEY_EVENT_LEFT)
-    } else if (evt.key == "ArrowRight") {
-        eventEmitter.emit(Messages.KEY_EVENT_RIGHT)
+    // if(evt.key === "ArrowUp") {
+    //     eventEmitter.emit(Messages.KEY_EVENT_UP)
+    // } else if (evt.key === "ArrowDown") {
+    //     eventEmitter.emit(Messages.KEY_EVENT_DOWN)
+    // } else if (evt.key === "ArrowLeft") {
+    //     eventEmitter.emit(Messages.KEY_EVENT_LEFT)
+    // } else if (evt.key === "ArrowRight") {
+    //     eventEmitter.emit(Messages.KEY_EVENT_RIGHT)
+    // } else
+        if(evt.key === " ") {
+        eventEmitter.emit(Messages.KEY_EVENT_SPACE);
     }
+});
+
+window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") keys.ArrowUp = true;
+    if (e.key === "ArrowDown") keys.ArrowDown = true;
+    if (e.key === "ArrowLeft") keys.ArrowLeft = true;
+    if (e.key === "ArrowRight") keys.ArrowRight = true;
+    //if (e.key === " ") keys.Space = true;
+});
+
+window.addEventListener("keyup", (e) => {
+    if (e.key === "ArrowUp") keys.ArrowUp = false;
+    if (e.key === "ArrowDown") keys.ArrowDown = false;
+    if (e.key === "ArrowLeft") keys.ArrowLeft = false;
+    if (e.key === "ArrowRight") keys.ArrowRight = false;
+    //if (e.key === " ") keys.Space = false;
 });
 
 class EventEmitter {
@@ -80,9 +154,11 @@ class EventEmitter {
         this.listeners[message].push(listener);
     }
 
-    emit(message) {
+    emit(message, payload = null) {
         if(this.listeners[message]) {
-            this.listeners[message].forEach(listener => listener());
+            this.listeners[message].forEach(listener => {
+                listener(message, payload);
+            });
         }
     }
 }
@@ -91,7 +167,18 @@ const Messages = {
     KEY_EVENT_UP: "KEY_EVENT_UP",
     KEY_EVENT_DOWN: "KEY_EVENT_DOWN",
     KEY_EVENT_LEFT: "KEY_EVENT_LEFT",
-    KEY_EVENT_RIGHT: "KEY_EVENT_RIGHT"
+    KEY_EVENT_RIGHT: "KEY_EVENT_RIGHT",
+    KEY_EVENT_SPACE: "KEY_EVENT_SPACE",
+    COLLISION_ENEMY_LASER: "COLLISION_ENEMY_LASER",
+    COLLISION_ENEMY_HERO: "COLLISION_ENEMY_HERO",
+}
+
+const keys = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false,
+    Space: false
 }
 
 let heroImg,
@@ -137,26 +224,29 @@ function createHero() {
     gameObjects.push(hero);
 }
 
+function updateGameObjects() {
+    const enemies = gameObjects.filter(go => go.type === 'Enemy');
+    const lasers = gameObjects.filter(go => go.type === "Laser");
+
+    // Test laser-enemy collisions
+    lasers.forEach((laser) => {
+        enemies.forEach((enemy) => {
+            if (intersectRect(laser.rectFromGameObject(), enemy.rectFromGameObject())) {
+                eventEmitter.emit(Messages.COLLISION_ENEMY_LASER, {
+                    first: laser,
+                    second: enemy,
+                });
+            }
+        });
+    });
+
+    // Remove destroyed objects
+    gameObjects = gameObjects.filter(go => !go.dead);
+}
+
 function drawGameObjects(ctx) {
     gameObjects.forEach(go => go.draw(ctx));
 }
-
-window.onload = async () => {
-  canvas = document.getElementById('canvas')
-  ctx = canvas.getContext('2d')
-  heroImg = await loadTexture("player.png")
-  enemyImg = await loadTexture("enemyShip.png")
-  laserImg = await loadTexture("laserRed.png")
-
-    initGame();
-  const gameLoopId = setInterval(() => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      drawGameObjects(ctx);
-  }, 100);
-}
-
 
 function initGame() {
     gameObjects = [];
@@ -179,4 +269,43 @@ function initGame() {
         hero.x += 5
     })
 
+    eventEmitter.on(Messages.KEY_EVENT_SPACE, () => {
+        if (hero.canFire()) {
+            hero.fire();
+        }
+    });
+
+    eventEmitter.on(Messages.COLLISION_ENEMY_LASER, (_, { first, second }) => {
+        first.dead = true;
+        second.dead = true;
+    });
+
+}
+
+
+window.onload = async () => {
+    canvas = document.getElementById('canvas')
+    ctx = canvas.getContext('2d')
+    heroImg = await loadTexture("player.png")
+    enemyImg = await loadTexture("enemyShip.png")
+    laserImg = await loadTexture("laserRed.png")
+
+    initGame();
+    const gameLoopId = setInterval(() => {
+
+        if (keys.ArrowUp) hero.y -= hero.speed;
+        if (keys.ArrowDown) hero.y += hero.speed;
+        if (keys.ArrowLeft) hero.x -= hero.speed;
+        if (keys.ArrowRight) hero.x += hero.speed;
+
+        if (keys.Space && hero.canFire()) {
+            hero.fire();
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        updateGameObjects();
+        drawGameObjects(ctx);
+    }, 100);
 }
